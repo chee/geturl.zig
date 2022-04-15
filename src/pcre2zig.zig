@@ -152,6 +152,9 @@ pub const MatchOptions = struct {
     context_opt_ptr: ?*MatchContext = null,
 };
 
+/// Matches the compiled pattern in `code` against `subject`, returning true at the first match found. On success, `data`
+/// holds the information related to the match, to be used with functions like `namedCapture` and `numberedCapture`, or
+/// to create a `MatchIterator`.
 pub fn match(
     code: CompiledCode,
     subject: []const u8,
