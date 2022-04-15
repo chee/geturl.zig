@@ -18,6 +18,23 @@ pub const CompiledCode = struct {
         pcre2.pcre2_code_free_8(self.ptr);
     }
 
+    /// Returns an independent, deep copy. Does not JIT compile the resulting copy.
+    pub fn copy(self: CompiledCode) PcreError!CompiledCode {
+        const copy_opt_ptr = pcre2.pcre2_code_copy_8(self.ptr);
+        if (copy_opt_ptr == null) return error.CopyingCompiledCode;
+        var new_code = self;
+        new_code.ptr = copy_opt_ptr.?;
+        var name_table_addr: usize = 0;
+        _ = pcre2.pcre2_pattern_info_8(
+            new_code.ptr,
+            pcre2.PCRE2_INFO_NAMETABLE,
+            &name_table_addr,
+        );
+        new_code.name_table_ptr = @intToPtr([*]u8, name_table_addr);
+
+        return new_code;
+    }
+
     /// If JIT compilation is available and successful, returns true, otherwise false and emits a debug log message with
     /// the returned error code. If JIT compilation fails, the `CompiledCode` still can match via interpreter mode, so
     /// failure here needn't be a fatal error. See the PCRE2 docs for more details.
@@ -376,6 +393,7 @@ pub fn replace(
 
 pub const PcreError = error{
     CompilngPattern,
+    CopyingCompiledCode,
     CreatingMatchData,
     InvalidBackslashK,
     IteratingMatches,
@@ -463,4 +481,17 @@ test "pcre2zig replace" {
         &buf,
         .{ .bits = pcre2.PCRE2_SUBSTITUTE_GLOBAL },
     ));
+}
+
+test "pcre2zig code copy" {
+    const code = try compile("ab+c", .{});
+    defer code.deinit();
+    const data = try MatchData.init(code);
+    defer data.deinit();
+    const code_copy = try code.copy();
+    defer code_copy.deinit();
+
+    try std.testing.expect(try match(code_copy, "abc", 0, data, .{}));
+    try std.testing.expect(try match(code_copy, "abbbbc", 0, data, .{}));
+    try std.testing.expect(!try match(code_copy, "acb", 0, data, .{}));
 }
