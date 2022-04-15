@@ -45,12 +45,14 @@ pub fn build(b: *std.build.Builder) void {
 
     const lib = b.addStaticLibrary("pcre2zig", "src/main.zig");
     lib.setBuildMode(mode);
+    lib.linkLibC();
     lib.addIncludePath("libs/pcre2-10.39/src");
     lib.addCSourceFiles(pcre2_cfiles, pcre2_cflags);
     lib.install();
 
     const main_tests = b.addTest("src/main.zig");
     main_tests.setBuildMode(mode);
+    main_tests.linkLibC();
     main_tests.addIncludePath("libs/pcre2-10.39/src");
     main_tests.addCSourceFiles(pcre2_cfiles, pcre2_cflags);
 
