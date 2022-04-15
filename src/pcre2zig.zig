@@ -7,10 +7,45 @@ const pcre2 = @cImport({
 
 /// `CompiledCode` is produced by a call to `compile`. Use `deinit` to free its resources when done.
 pub const CompiledCode = struct {
+    is_crlf: bool = false,
+    is_utf8: bool = false,
+    name_count: usize = 0,
+    name_entry_size: usize = 0,
+    name_table_ptr: ?[*]u8 = null,
     ptr: *pcre2.pcre2_code_8,
 
     pub fn deinit(self: CompiledCode) void {
         pcre2.pcre2_code_free_8(self.ptr);
+    }
+
+    /// If JIT compilation is available and successful, returns true, otherwise false and emits a debug log message with
+    /// the returned error code. If JIT compilation fails, the `CompiledCode` still can match via interpreter mode, so
+    /// failure here needn't be a fatal error. See the PCRE2 docs for more details.
+    pub fn jitCompile(self: CompiledCode, options: u32) bool {
+        const jit_options = if (options != 0) options else pcre2.PCRE2_JIT_COMPLETE | pcre2.PCRE2_JIT_PARTIAL_HARD | pcre2.PCRE2_JIT_PARTIAL_SOFT;
+        const jit_error = pcre2.pcre2_jit_compile_8(self.ptr, jit_options);
+
+        if (jit_error != 0) {
+            std.log.debug("pcre2zig.CompiledCode.jitCompile failed: {}", .{jit_error});
+            return false;
+        }
+
+        return true;
+    }
+
+    /// Returns the index number of a named capture group, if defined.
+    pub fn nameToNumber(self: CompiledCode, name: []const u8) ?usize {
+        if (self.name_table_ptr == null) return null;
+
+        var ptr_copy = self.name_table_ptr.?;
+        var i: usize = 0;
+
+        return while (i < self.name_count) : (i += 1) {
+            const number: u16 = (@as(u16, ptr_copy[0]) << 8) | @as(u16, ptr_copy[1]);
+            const capture_name = ptr_copy[2 .. self.name_entry_size - 1];
+            if (std.mem.eql(u8, capture_name, name)) break number;
+            ptr_copy += self.name_entry_size;
+        } else null;
     }
 };
 
@@ -41,10 +76,56 @@ pub fn compile(pattern: []const u8, options: CompileOptions) PcreError!CompiledC
         var buf: [256]u8 = [_]u8{0} ** 256;
         _ = pcre2.pcre2_get_error_message_8(err_code, &buf, buf.len);
         std.log.debug("pcre2zig.compile error at pattern offset {}: {s}", .{ err_offset, &buf });
-        return error.CompileFailed;
+        return error.CompilngPattern;
     }
 
-    return CompiledCode{ .ptr = re_opt_ptr.? };
+    var self = CompiledCode{ .ptr = re_opt_ptr.? };
+
+    // Get name count.
+    _ = pcre2.pcre2_pattern_info_8(
+        self.ptr,
+        pcre2.PCRE2_INFO_NAMECOUNT,
+        &self.name_count,
+    );
+
+    if (self.name_count != 0) {
+        // Before we can access the substrings, we must extract the table for
+        // translating names to numbers, and the size of each entry in the table.
+        var name_table_addr: usize = 0;
+        _ = pcre2.pcre2_pattern_info_8(
+            self.ptr,
+            pcre2.PCRE2_INFO_NAMETABLE,
+            &name_table_addr,
+        );
+        self.name_table_ptr = @intToPtr([*]u8, name_table_addr);
+
+        _ = pcre2.pcre2_pattern_info_8(
+            self.ptr,
+            pcre2.PCRE2_INFO_NAMEENTRYSIZE,
+            &self.name_entry_size,
+        );
+    }
+
+    var option_bits: u32 = 0;
+    _ = pcre2.pcre2_pattern_info_8(
+        self.ptr,
+        pcre2.PCRE2_INFO_ALLOPTIONS,
+        &option_bits,
+    );
+    self.is_utf8 = (option_bits & pcre2.PCRE2_UTF) != 0;
+
+    // Now find the newline convention and see whether CRLF is a valid newline sequence.
+    var newline: u32 = 0;
+    _ = pcre2.pcre2_pattern_info_8(
+        self.ptr,
+        pcre2.PCRE2_INFO_NEWLINE,
+        &newline,
+    );
+    self.is_crlf = newline == pcre2.PCRE2_NEWLINE_ANY or
+        newline == pcre2.PCRE2_NEWLINE_CRLF or
+        newline == pcre2.PCRE2_NEWLINE_ANYCRLF;
+
+    return self;
 }
 
 /// Only necessary when calling `match` in special cases. See the PCRE2 docs for `pcre2_match` to learn more.
@@ -56,7 +137,7 @@ pub const MatchData = struct {
 
     pub fn init(code: CompiledCode) PcreError!MatchData {
         const opt_ptr = pcre2.pcre2_match_data_create_from_pattern_8(code.ptr, null); //TODO: Handle context arg.
-        if (opt_ptr == null) return error.MatchDataCreateFailed;
+        if (opt_ptr == null) return error.CreatingMatchData;
         return MatchData{ .ptr = opt_ptr.? };
     }
 
@@ -94,7 +175,7 @@ pub fn match(
             pcre2.PCRE2_ERROR_NOMATCH => return false,
             else => {
                 std.log.debug("pcre2zig.match error: {}", .{rc});
-                return error.MatchError;
+                return error.Matching;
             },
         }
     }
@@ -102,19 +183,198 @@ pub fn match(
     return true;
 }
 
+pub const MatchIterator = struct {
+    code: CompiledCode,
+    data: MatchData,
+    ovector: ?[*c]usize = null,
+    subject: []const u8,
+
+    pub fn init(
+        code: CompiledCode,
+        data: MatchData,
+        subject: []const u8,
+    ) MatchIterator {
+        return .{
+            .code = code,
+            .data = data,
+            .subject = subject,
+        };
+    }
+
+    pub fn next(self: *MatchIterator) PcreError!bool {
+        if (self.ovector == null) {
+            self.ovector = pcre2.pcre2_get_ovector_pointer_8(self.data.ptr);
+            return true;
+        }
+
+        const subject_len = self.subject.len;
+        var options: u32 = 0; //  Normally no options
+        var start_offset: usize = self.ovector.?[1]; //  Start at end of previous match
+
+        // If the previous match was for an empty string, we are finished if we are
+        // at the end of the subject. Otherwise, arrange to run another match at the
+        // same point to see if a non-empty match can be found.
+        if (self.ovector.?[0] == self.ovector.?[1]) {
+            if (self.ovector.?[0] == subject_len) return false;
+            options = pcre2.PCRE2_NOTEMPTY_ATSTART | pcre2.PCRE2_ANCHORED;
+        } else {
+            // If the previous match was not an empty string, there is one tricky case to
+            // consider. If a pattern contains \K within a lookbehind assertion at the
+            // start, the end of the matched string can be at the offset where the match
+            // started. Without special action, this leads to a loop that keeps on matching
+            // the same substring. We must detect this case and arrange to move the start on
+            // by one character. The pcre2_get_startchar() function returns the starting
+            // offset that was passed to pcre2_match().
+            var startchar: usize = pcre2.pcre2_get_startchar_8(self.data.ptr);
+            if (start_offset <= startchar) {
+                if (startchar >= subject_len) return false; //  Reached end of subject.
+                start_offset = startchar + 1; //  Advance by one character.
+
+                //  If UTF-8, it may be more
+                if (self.code.is_utf8) {
+                    while (start_offset < subject_len) : (start_offset += 1) {
+                        if ((self.subject[start_offset] & 0xc0) != 0x80) break;
+                    }
+                }
+            }
+        }
+
+        //  Run the next matching operation
+        const rc = pcre2.pcre2_match_8(
+            self.code.ptr,
+            self.subject.ptr,
+            subject_len,
+            start_offset,
+            options,
+            self.data.ptr,
+            null, //TODO: Handle match context.
+        );
+
+        // This time, a result of NOMATCH isn't an error. If the value in "options"
+        // is zero, it just means we have found all possible matches, so the loop ends.
+        // Otherwise, it means we have failed to find a non-empty-string match at a
+        // point where there was a previous empty-string match. In this case, we do what
+        // Perl does: advance the matching position by one character, and continue. We
+        // do this by setting the "end of previous match" offset, because that is picked
+        // up at the top of the loop as the point at which to start again.
+        //
+        // There are two complications: (a) When CRLF is a valid newline sequence, and
+        // the current position is just before it, advance by an extra byte. (b)
+        // Otherwise we must ensure that we skip an entire UTF character if we are in
+        // UTF mode.
+        if (rc == pcre2.PCRE2_ERROR_NOMATCH) {
+            if (options == 0) return false; //  All matches found
+            self.ovector.?[1] = start_offset + 1; //  Advance one code unit
+
+            if (self.code.is_crlf and //  If CRLF is a newline and
+                start_offset < subject_len - 1 and //  we are at CRLF,
+                self.subject[start_offset] == '\r' and
+                self.subject[start_offset + 1] == '\n')
+            {
+                self.ovector.?[1] += 1; //  Advance by one more.
+            } else if (self.code.is_utf8) {
+                //  Otherwise, ensure we advance a whole UTF-8 character.
+                while (self.ovector.?[1] < subject_len) {
+                    if ((self.subject[self.ovector.?[1]] & 0xc0) != 0x80) break;
+                    self.ovector.?[1] += 1;
+                }
+            }
+
+            return self.next(); //  Recurse
+        }
+
+        //  Other matching errors are not recoverable.
+        if (rc < 0) {
+            std.log.debug("pcre2zig.MatchIterator.next error: {}", .{rc});
+            return error.IteratingMatches;
+        }
+
+        // The match succeeded, but the output vector wasn't big enough. This should not happen.
+        if (rc == 0) std.log.debug("pcre2zig.MatchIterator.next ovector was not big enough for all the captured substrings.", .{});
+
+        // We must guard against patterns such as /(?=.\K)/ that use \K in an
+        // assertion to set the start of a match later than its end. In this
+        // demonstration program, we just detect this case and give up. */
+        if (self.ovector.?[0] > self.ovector.?[1]) return error.InvalidBackslashK;
+
+        return true;
+    }
+
+    pub fn reset(self: *MatchIterator) void {
+        //  Run the matching operation from the start.
+        _ = pcre2.pcre2_match_8(
+            self.code.ptr,
+            self.subject.ptr,
+            self.subject.len,
+            0,
+            0,
+            self.data.ptr,
+            null,
+        );
+
+        self.ovector = null;
+    }
+};
+
+/// Get the captured substring for the given name, if defined.
+pub fn namedCapture(code: CompiledCode, data: MatchData, subject: []const u8, name: []const u8) ?[]const u8 {
+    return if (code.nameToNumber(name)) |number| numberedCapture(data, subject, number) else null;
+}
+
+/// Get the captured substring for the given number, if defined.
+pub fn numberedCapture(data: MatchData, subject: []const u8, number: usize) ?[]const u8 {
+    const ovector = pcre2.pcre2_get_ovector_pointer_8(data.ptr);
+    return subject[ovector[2 * number]..ovector[2 * number + 1]];
+}
+
 pub const PcreError = error{
-    CompileFailed,
-    MatchDataCreateFailed,
-    MatchError,
+    CompilngPattern,
+    CreatingMatchData,
+    InvalidBackslashK,
+    IteratingMatches,
+    Matching,
 };
 
 test "pcre2zig simple match" {
     const code = try compile("ab+c", .{});
     defer code.deinit();
+    _ = code.jitCompile(0);
     const data = try MatchData.init(code);
     defer data.deinit();
 
     try std.testing.expect(try match(code, "abc", 0, data, .{}));
     try std.testing.expect(try match(code, "abbbbc", 0, data, .{}));
     try std.testing.expect(!try match(code, "acb", 0, data, .{}));
+}
+
+test "pcre2zig match iterator" {
+    const pattern =
+        \\(?x) (?<one> \d{3}) - (?<two> \d{3}) - (?<three> \d{4})
+    ;
+    const subject = "Tel: 787-410-0495 Tel: 787-738-1093 Tel: 787-747-7298";
+
+    const code = try compile(pattern, .{});
+    defer code.deinit();
+    _ = code.jitCompile(0);
+    const data = try MatchData.init(code);
+    defer data.deinit();
+
+    try std.testing.expect(try match(code, subject, 0, data, .{}));
+
+    var iter = MatchIterator.init(code, data, subject);
+
+    try std.testing.expect(try iter.next());
+    try std.testing.expectEqualStrings("410", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("0495", namedCapture(code, data, subject, "three").?);
+    try std.testing.expect(try iter.next());
+    try std.testing.expectEqualStrings("738", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("1093", namedCapture(code, data, subject, "three").?);
+    try std.testing.expect(try iter.next());
+    try std.testing.expectEqualStrings("747", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("7298", namedCapture(code, data, subject, "three").?);
+    try std.testing.expect(!try iter.next());
+    iter.reset();
+    try std.testing.expect(try iter.next());
+    try std.testing.expectEqualStrings("410", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("0495", namedCapture(code, data, subject, "three").?);
 }
