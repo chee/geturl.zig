@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const pcre2 = @cImport({
+pub const pcre2 = @cImport({
     @cDefine("PCRE2_CODE_UNIT_WIDTH", "8");
     @cInclude("pcre2.h");
 });
