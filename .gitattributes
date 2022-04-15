@@ -2,3 +2,7 @@
 *.mod text eol=lf
 *.lock text eol=lf
 *.md text eol=lf
+zig.mod text eol=lf
+zigmod.* text eol=lf
+zig.mod linguist-language=YAML
+zig.mod gitlab-language=yaml

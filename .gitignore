@@ -22,3 +22,5 @@ zed-2/
 run/
 .zigmod
 deps.zig
+.zigmod
+deps.zig
