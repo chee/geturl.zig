@@ -1,4 +1,4 @@
-//! pcre2zig provides a simple Zig API for the PCRE2 C library. Please refer to the PCRE2 docs for detauls on the options
+//! pcre2zig provides a simple Zig API for the PCRE2 C library. Please refer to the PCRE2 docs for details on the options
 //! that are sometimes available when compiling, matching, and replacing: https://www.pcre.org/current/doc/html/ .
 
 const std = @import("std");
