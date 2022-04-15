@@ -183,12 +183,16 @@ pub fn match(
     return true;
 }
 
+/// Iterates through the matches in a subject for a given `CompiledCode` and `MatchData` combination. Each call to 
+/// `next` moves to the next match and returns true. If no more matches are found, false is returned. You can then 
+/// start over by calling the `reset` method.
 pub const MatchIterator = struct {
     code: CompiledCode,
     data: MatchData,
     ovector: ?[*c]usize = null,
     subject: []const u8,
 
+    /// The subject must be the same provided to `match` with the given `MatchData`.
     pub fn init(
         code: CompiledCode,
         data: MatchData,
@@ -351,7 +355,7 @@ test "pcre2zig match iterator" {
     const pattern =
         \\(?x) (?<one> \d{3}) - (?<two> \d{3}) - (?<three> \d{4})
     ;
-    const subject = "Tel: 787-410-0495 Tel: 787-738-1093 Tel: 787-747-7298";
+    const subject = "Tel: 111-123-4567 Tel: 222-234-5678 Tel: 333-456-7890";
 
     const code = try compile(pattern, .{});
     defer code.deinit();
@@ -364,17 +368,21 @@ test "pcre2zig match iterator" {
     var iter = MatchIterator.init(code, data, subject);
 
     try std.testing.expect(try iter.next());
-    try std.testing.expectEqualStrings("410", numberedCapture(data, subject, 2).?);
-    try std.testing.expectEqualStrings("0495", namedCapture(code, data, subject, "three").?);
+    try std.testing.expectEqualStrings("123", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("4567", namedCapture(code, data, subject, "three").?);
+
     try std.testing.expect(try iter.next());
-    try std.testing.expectEqualStrings("738", numberedCapture(data, subject, 2).?);
-    try std.testing.expectEqualStrings("1093", namedCapture(code, data, subject, "three").?);
+    try std.testing.expectEqualStrings("234", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("5678", namedCapture(code, data, subject, "three").?);
+
     try std.testing.expect(try iter.next());
-    try std.testing.expectEqualStrings("747", numberedCapture(data, subject, 2).?);
-    try std.testing.expectEqualStrings("7298", namedCapture(code, data, subject, "three").?);
+    try std.testing.expectEqualStrings("456", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("7890", namedCapture(code, data, subject, "three").?);
+
     try std.testing.expect(!try iter.next());
     iter.reset();
+
     try std.testing.expect(try iter.next());
-    try std.testing.expectEqualStrings("410", numberedCapture(data, subject, 2).?);
-    try std.testing.expectEqualStrings("0495", namedCapture(code, data, subject, "three").?);
+    try std.testing.expectEqualStrings("123", numberedCapture(data, subject, 2).?);
+    try std.testing.expectEqualStrings("4567", namedCapture(code, data, subject, "three").?);
 }
