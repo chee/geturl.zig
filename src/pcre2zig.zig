@@ -331,12 +331,53 @@ pub fn numberedCapture(data: MatchData, subject: []const u8, number: usize) ?[]c
     return subject[ovector[2 * number]..ovector[2 * number + 1]];
 }
 
+// Convenience struct for the options used by `compile`.
+pub const ReplaceOptions = struct {
+    bits: u32 = 0,
+    data_opt: ?MatchData = null,
+    context_opt_ptr: ?*MatchContext = null,
+};
+
+/// Uses the the compiled pattern in `code` to Replace matches in `subject` with `replacement`. Assumes `buf` is
+/// large enough to contain the resulting bytes.
+pub fn replace(
+    code: CompiledCode,
+    subject: []const u8,
+    start_offset: usize,
+    replacement: []const u8,
+    buf: []u8,
+    options: ReplaceOptions,
+) PcreError![]u8 {
+    var buf_len = buf.len;
+    const num_replacements = pcre2.pcre2_substitute_8(
+        code.ptr,
+        subject.ptr,
+        subject.len,
+        start_offset,
+        options.bits,
+        if (options.data_opt) |data| data.ptr else null,
+        if (options.context_opt_ptr) |ptr| ptr else null,
+        replacement.ptr,
+        replacement.len,
+        buf.ptr,
+        &buf_len,
+    );
+
+    if (num_replacements < 0) {
+        std.log.debug("pcre2zig.replace error: {}", .{num_replacements});
+        return error.Replacing;
+    }
+
+    return buf[0..buf_len];
+}
+
 pub const PcreError = error{
     CompilngPattern,
     CreatingMatchData,
     InvalidBackslashK,
     IteratingMatches,
     Matching,
+    Replacing,
 };
 
 test "pcre2zig simple match" {
@@ -385,4 +426,38 @@ test "pcre2zig match iterator" {
     try std.testing.expect(try iter.next());
     try std.testing.expectEqualStrings("123", numberedCapture(data, subject, 2).?);
     try std.testing.expectEqualStrings("4567", namedCapture(code, data, subject, "three").?);
+}
+
+test "pcre2zig replace" {
+    const pattern =
+        \\(?x) (?<month> \d{2}) / (?<day> \d{2}) / (?<year> \d{4})
+    ;
+    const subject = "Date: 12/25/1970 Date: 11/24/1969";
+    const replacement =
+        \\${year}/${month}/${day}
+    ;
+
+    const code = try compile(pattern, .{});
+    defer code.deinit();
+    _ = code.jitCompile(0);
+    const data = try MatchData.init(code);
+    defer data.deinit();
+    var buf: [256]u8 = undefined;
+
+    try std.testing.expectEqualStrings("Date: 1970/12/25 Date: 11/24/1969", try replace(
+        code,
+        subject,
+        0,
+        replacement,
+        &buf,
+        .{},
+    ));
+    try std.testing.expectEqualStrings("Date: 1970/12/25 Date: 1969/11/24", try replace(
+        code,
+        subject,
+        0,
+        replacement,
+        &buf,
+        .{ .bits = pcre2.PCRE2_SUBSTITUTE_GLOBAL },
+    ));
 }
