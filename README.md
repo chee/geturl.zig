@@ -2,7 +2,9 @@
 A simple Zig API for the PCRE2 C library.
 
 ## Sample Usage
-In lack of proper docs, the following test samples show how to use the library.
+In lack of proper docs, the following test samples show how to use the library. Some functions and methods may take bit 
+flags as options (bitwise `or`ed into a u32); please refer to the [PCRE2 docs](https://www.pcre.org/current/doc/html/)
+for details on these options.
 
 ```zig
 const std = @import("std");
