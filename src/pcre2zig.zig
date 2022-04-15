@@ -484,7 +484,10 @@ test "pcre2zig replace" {
 }
 
 test "pcre2zig code copy" {
-    const code = try compile("ab+c", .{});
+    const pattern =
+        \\(?x) a (?<bees> b+) c
+    ;
+    const code = try compile(pattern, .{});
     defer code.deinit();
     const data = try MatchData.init(code);
     defer data.deinit();
@@ -493,5 +496,6 @@ test "pcre2zig code copy" {
 
     try std.testing.expect(try match(code_copy, "abc", 0, data, .{}));
     try std.testing.expect(try match(code_copy, "abbbbc", 0, data, .{}));
+    try std.testing.expectEqualStrings("bbbb", namedCapture(code_copy, data, "abbbbc", "bees").?);
     try std.testing.expect(!try match(code_copy, "acb", 0, data, .{}));
 }
