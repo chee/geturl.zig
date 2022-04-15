@@ -334,7 +334,7 @@ pub fn numberedCapture(data: MatchData, subject: []const u8, number: usize) ?[]c
     return subject[ovector[2 * number]..ovector[2 * number + 1]];
 }
 
-// Convenience struct for the options used by `compile`.
+// Convenience struct for the options used by `replace`.
 pub const ReplaceOptions = struct {
     bits: u32 = 0,
     data_opt: ?MatchData = null,
