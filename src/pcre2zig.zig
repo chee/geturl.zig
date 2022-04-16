@@ -12,7 +12,7 @@ pub const pcre2 = @cImport({
 pub const CompiledCode = struct {
     is_crlf: bool = false,
     is_utf8: bool = false,
-    name_count: usize = 0,
+    name_count: u16 = 0,
     name_entry_size: usize = 0,
     name_table_ptr: ?[*]u8 = null,
     ptr: *pcre2.pcre2_code_8,
@@ -54,16 +54,31 @@ pub const CompiledCode = struct {
     }
 
     /// Returns the index number of a named capture group, if defined.
-    pub fn nameToNumber(self: CompiledCode, name: []const u8) ?usize {
+    pub fn nameToNumber(self: CompiledCode, name: []const u8) ?u16 {
         if (self.name_table_ptr == null) return null;
 
         var ptr_copy = self.name_table_ptr.?;
-        var i: usize = 0;
+        var i: u16 = 0;
 
         return while (i < self.name_count) : (i += 1) {
             const number: u16 = (@as(u16, ptr_copy[0]) << 8) | @as(u16, ptr_copy[1]);
             const capture_name = ptr_copy[2 .. self.name_entry_size - 1];
             if (std.mem.eql(u8, capture_name, name)) break number;
+            ptr_copy += self.name_entry_size;
+        } else null;
+    }
+
+    /// Returns the name of a named capture group for the given capture index number, if defined.
+    pub fn numberToName(self: CompiledCode, number: u16) ?[]const u8 {
+        if (self.name_table_ptr == null) return null;
+
+        var ptr_copy = self.name_table_ptr.?;
+        var i: u16 = 0;
+
+        return while (i < self.name_count) : (i += 1) {
+            const entry_number: u16 = (@as(u16, ptr_copy[0]) << 8) | @as(u16, ptr_copy[1]);
+            const capture_name = ptr_copy[2 .. self.name_entry_size - 1];
+            if (number == entry_number) break capture_name;
             ptr_copy += self.name_entry_size;
         } else null;
     }
@@ -102,11 +117,13 @@ pub fn compile(pattern: []const u8, options: CompileOptions) PcreError!CompiledC
     var self = CompiledCode{ .ptr = re_opt_ptr.? };
 
     // Get name count.
+    var name_count: usize = 0;
     _ = pcre2.pcre2_pattern_info_8(
         self.ptr,
         pcre2.PCRE2_INFO_NAMECOUNT,
-        &self.name_count,
+        &name_count,
     );
+    self.name_count = @intCast(u16, name_count);
 
     if (self.name_count != 0) {
         // Before we can access the substrings, we must extract the table for
@@ -153,6 +170,7 @@ pub const MatchContext = pcre2.pcre2_match_context_8;
 
 /// Resources used by `match` are stored in `MatchData`. Call `deinit` to free them.
 pub const MatchData = struct {
+    captures_len: u16 = 0,
     ptr: *pcre2.pcre2_match_data_8,
 
     pub fn init(code: CompiledCode) PcreError!MatchData {
@@ -179,7 +197,7 @@ pub fn match(
     code: CompiledCode,
     subject: []const u8,
     start_offset: usize,
-    data: MatchData,
+    data: *MatchData,
     options: MatchOptions,
 ) PcreError!bool {
     var rc = pcre2.pcre2_match_8(
@@ -202,6 +220,8 @@ pub fn match(
             },
         }
     }
+
+    data.captures_len = @intCast(u16, rc);
 
     return true;
 }
@@ -349,7 +369,8 @@ pub fn namedCapture(code: CompiledCode, data: MatchData, subject: []const u8, na
 }
 
 /// Get the captured substring for the given number, if defined.
-pub fn numberedCapture(data: MatchData, subject: []const u8, number: usize) ?[]const u8 {
+pub fn numberedCapture(data: MatchData, subject: []const u8, number: u16) ?[]const u8 {
+    if (number >= data.captures_len) return null;
     const ovector = pcre2.pcre2_get_ovector_pointer_8(data.ptr);
     return subject[ovector[2 * number]..ovector[2 * number + 1]];
 }

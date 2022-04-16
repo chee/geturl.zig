@@ -9,18 +9,18 @@ for details on these options.
 ```zig
 const std = @import("std");
 
-const p2z = @import("pcre2zig");
+const p2z = @import("pcre2zig.zig");
 
 test "pcre2zig simple match" {
     const code = try p2z.compile("ab+c", .{});
     defer code.deinit();
     _ = code.jitCompile(0);
-    const data = try p2z.MatchData.init(code);
+    var data = try p2z.MatchData.init(code);
     defer data.deinit();
 
-    try std.testing.expect(try p2z.match(code, "abc", 0, data, .{}));
-    try std.testing.expect(try p2z.match(code, "abbbbc", 0, data, .{}));
-    try std.testing.expect(!try p2z.match(code, "acb", 0, data, .{}));
+    try std.testing.expect(try p2z.match(code, "abc", 0, &data, .{}));
+    try std.testing.expect(try p2z.match(code, "abbbbc", 0, &data, .{}));
+    try std.testing.expect(!try p2z.match(code, "acb", 0, &data, .{}));
 }
 
 test "pcre2zig match iterator" {
@@ -32,10 +32,10 @@ test "pcre2zig match iterator" {
     const code = try p2z.compile(pattern, .{});
     defer code.deinit();
     _ = code.jitCompile(0);
-    const data = try p2z.MatchData.init(code);
+    var data = try p2z.MatchData.init(code);
     defer data.deinit();
 
-    try std.testing.expect(try p2z.match(code, subject, 0, data, .{}));
+    try std.testing.expect(try p2z.match(code, subject, 0, &data, .{}));
 
     var iter = p2z.MatchIterator.init(code, data, subject);
 
@@ -71,7 +71,7 @@ test "pcre2zig replace" {
     const code = try p2z.compile(pattern, .{});
     defer code.deinit();
     _ = code.jitCompile(0);
-    const data = try p2z.MatchData.init(code);
+    var data = try p2z.MatchData.init(code);
     defer data.deinit();
     var buf: [256]u8 = undefined;
 
@@ -99,15 +99,15 @@ test "pcre2zig code copy" {
     ;
     const code = try p2z.compile(pattern, .{});
     defer code.deinit();
-    const data = try p2z.MatchData.init(code);
+    var data = try p2z.MatchData.init(code);
     defer data.deinit();
     const code_copy = try code.copy();
     defer code_copy.deinit();
 
-    try std.testing.expect(try p2z.match(code_copy, "abc", 0, data, .{}));
-    try std.testing.expect(try p2z.match(code_copy, "abbbbc", 0, data, .{}));
+    try std.testing.expect(try p2z.match(code_copy, "abc", 0, &data, .{}));
+    try std.testing.expect(try p2z.match(code_copy, "abbbbc", 0, &data, .{}));
     try std.testing.expectEqualStrings("bbbb", p2z.namedCapture(code_copy, data, "abbbbc", "bees").?);
-    try std.testing.expect(!try p2z.match(code_copy, "acb", 0, data, .{}));
+    try std.testing.expect(!try p2z.match(code_copy, "acb", 0, &data, .{}));
 }
 ```
 
