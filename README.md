@@ -1,6 +1,30 @@
 # pcre2zig
 A simple Zig API for the PCRE2 C library.
 
+## Using pcre2zig In Your Project
+It's common to put dependencies in a `libs` subdirectory of you Zig project's root directory.
+
+```
+$ cd <your zig project root dir>
+$ mkdir libs
+$ cd libs
+$ git clone https://github.com/jecolon/pcre2zig 
+$ cd pcre2zig
+$ zig build -Drelease-fast
+$ cd ../..
+```
+
+Then in `build.zig`, add the following to the `exe`, `lib`, or other items that need the dependency.
+
+```
+exe.addIncludePath("libs/pcre2zig/libs/pcre2-10.39/src");
+exe.addLibraryPath("libs/pcre2zig/zig-out/lib");
+exe.linkSystemLibraryName("pcre2zig");
+exe.addPackagePath("pcre2zig", "libs/pcre2zig/src/pcre2zig.zig");
+```
+
+Now when you should be able to use the library as shown below.
+
 ## Sample Usage
 In lack of proper docs, the following test samples show how to use the library. Some functions and methods may take bit 
 flags as options (bitwise `or`ed into a u32); please refer to the [PCRE2 docs](https://www.pcre.org/current/doc/html/)
@@ -9,7 +33,7 @@ for details on these options.
 ```zig
 const std = @import("std");
 
-const p2z = @import("pcre2zig.zig");
+const p2z = @import("pcre2zig");
 
 test "pcre2zig simple match" {
     const code = try p2z.compile("ab+c", .{});
