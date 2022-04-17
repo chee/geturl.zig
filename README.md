@@ -23,7 +23,7 @@ exe.linkSystemLibraryName("pcre2zig");
 exe.addPackagePath("pcre2zig", "libs/pcre2zig/src/pcre2zig.zig");
 ```
 
-Now when you should be able to use the library as shown below.
+Now you should be able to use the library as shown below.
 
 ## Sample Usage
 In lack of proper docs, the following test samples show how to use the library. Some functions and methods may take bit 
