@@ -12,7 +12,6 @@ pkgs:
       src/*.zig
 deps:
   ducdetronquito/http: ^0.1.3
-  ducdetronquito/h11: ^0.1.1
   iguanaTLS:
     git:
       url: "https://github.com/nektro/iguanaTLS.git"
@@ -22,3 +21,5 @@ deps:
       url: "https://github.com/MasterQ32/zig-network.git"
       ref: 16f7e71a09e35861f634b2bffd235ef0db04467f
       root: network.zig
+  h11
+    local: ../h11
