@@ -1,4 +1,5 @@
 const Allocator = std.mem.Allocator;
+const Authenticator = @import("oauth2.zig").Authenticator;
 const TcpConnection = @import("connection.zig").TcpConnection;
 const Method = @import("http").Method;
 const network = @import("network");
@@ -74,5 +75,10 @@ pub const Client = struct {
 
     fn get_connection(self: Client, uri: Uri) !*TcpConnection {
         return try TcpConnection.connect(self.allocator, uri);
+    }
+
+    pub fn oauth_login(self: *Client, auth: Authenticator) !void {
+        _ = self;
+        _ = auth;
     }
 };
