@@ -21,5 +21,8 @@ deps:
       url: "https://github.com/MasterQ32/zig-network.git"
       ref: 16f7e71a09e35861f634b2bffd235ef0db04467f
       root: network.zig
-  h11
-    local: ../h11
+  h11:
+    git:
+      url: "https://github.com/devins2518/h11.git"
+      ref: 9750f686bc8e486642ee250de11d3ab8a3ec5bb5
+      root: src/main.zig
