@@ -7,7 +7,7 @@ pub fn word() [5]u8 {
 
     var i: u8 = 5;
     while (i > 0) {
-        buffer[i - 1] = alphabet[std.crypto.random.int(u8) % 26];
+        buffer[i - 1] = alphabet[std.crypto.random.int(u8) % alphabet.len];
         i -= 1;
     }
 
@@ -28,5 +28,5 @@ pub fn main() anyerror!void {
             _ = try stdout.write("-");
         }
     }
-    _=try stdout.write("\n");
+    _ = try stdout.write("\n");
 }
