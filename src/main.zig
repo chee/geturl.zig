@@ -1,13 +1,20 @@
 const std = @import("std");
 
-const alphabet = [_]u8{ 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z' };
+const consonants = [_]u8{ 'b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z' };
+const vowels = [_]u8{'a', 'e', 'i', 'o', 'u'};
 
-pub fn word() [5]u8 {
+fn word() [5]u8 {
     var buffer: [5]u8 = undefined;
 
     var i: u8 = 5;
+
     while (i > 0) {
-        buffer[i - 1] = alphabet[std.crypto.random.int(u8) % alphabet.len];
+        const int = std.crypto.random.int(u8);
+        buffer[i - 1] =
+            if (i % 2 == 0)
+                consonants[int % consonants.len]
+            else
+                vowels[int % vowels.len];
         i -= 1;
     }
 
@@ -18,9 +25,9 @@ pub fn main() anyerror!void {
     const stdout = std.io.getStdOut().writer();
     var args = std.process.args();
     _ = args.next();
-    const arg = args.next() orelse "5";
-    var times = std.fmt.parseInt(u32, arg, 0) catch 5;
-    
+    const arg = args.next() orelse "1";
+    var times = std.fmt.parseInt(u32, arg, 0) catch 1;
+
     while (times > 0) {
         try stdout.print("{s}", .{word()});
         times -= 1;
