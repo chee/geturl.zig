@@ -25,8 +25,8 @@ pub fn main() anyerror!void {
     const stdout = std.io.getStdOut().writer();
     var args = std.process.args();
     _ = args.next();
-    const arg = args.next() orelse "1";
-    var times = std.fmt.parseInt(u32, arg, 0) catch 1;
+
+    var times = std.fmt.parseInt(u32, args.next() orelse "1", 0) catch 1;
 
     while (times > 0) {
         try stdout.print("{s}", .{word()});
