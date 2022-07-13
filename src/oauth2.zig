@@ -251,9 +251,15 @@ const TokenInfo = struct {
             return error.InvalidJson
         else
             Self{
-                .access_token = obj.get("access_token").?.String,
-                .refresh_token = if (obj.get("refresh_token")) |t| t.String else null,
-                .id_token = if (obj.get("id_token")) |t| t.String else null,
+                .access_token = try allocator.dupe(u8, obj.get("access_token").?.String),
+                .refresh_token = if (obj.get("refresh_token")) |t|
+                    try allocator.dupe(u8, t.String)
+                else
+                    null,
+                .id_token = if (obj.get("id_token")) |t|
+                    try allocator.dupe(u8, t.String)
+                else
+                    null,
             };
     }
 
@@ -262,8 +268,13 @@ const TokenInfo = struct {
         return true;
     }
 
-    fn toAccessToken(self: *const Self) AccessToken {
-        return AccessToken{ .value = self.access_token };
+    fn toAccessToken(self: Self) AccessToken {
+        return AccessToken{ .value = self.access_token, ._backing = self };
+    }
+    fn deinit(self: *const Self, allocator: Allocator) void {
+        allocator.free(self.access_token);
+        if (self.refresh_token) |t| allocator.free(t);
+        if (self.id_token) |t| allocator.free(t);
     }
 };
 
@@ -403,6 +414,11 @@ pub const JsonToken = struct {
 pub const AccessToken = struct {
     value: []const u8,
     // TODO expiration
+    _backing: TokenInfo,
+
+    pub fn deinit(self: *const @This(), allocator: Allocator) void {
+        self._backing.deinit(allocator);
+    }
 };
 
 const RefreshFlow = struct {
