@@ -26,3 +26,8 @@ deps:
       url: "https://github.com/devins2518/h11.git"
       ref: 9750f686bc8e486642ee250de11d3ab8a3ec5bb5
       root: src/main.zig
+  apple_pie:
+    git:
+      url: "https://github.com/Luukdegram/apple_pie"
+      ref: 55b25cf50018fe314606765ca984a0a841743eb5
+      root: src/apple_pie.zig
