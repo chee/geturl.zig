@@ -192,6 +192,9 @@ pub const InstalledFlow = struct {
         };
         return client.post(secret.token_uri, .{ .headers = headers, .content = body.items });
     }
+    fn deinit(self: *Self) void {
+        self.secret.deinit();
+    }
 };
 
 const InstalledFlowServer = struct {
@@ -327,10 +330,18 @@ pub const Authenticator = struct {
                 try self.auth_flow.token(self.client, scopes);
             try self.storage.set(hashed_scopes, token_info);
             return token_info;
+        } else {
+            const token_info = try self.auth_flow.token(self.client, scopes);
+            try self.storage.set(hashed_scopes, token_info);
+            return token_info;
         }
-        const token_info = try self.auth_flow.token(self.client, scopes);
-        try self.storage.set(hashed_scopes, token_info);
-        return token_info;
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.storage.deinit();
+        switch (self.auth_flow) {
+            .installed_flow => |*flow| flow.deinit(),
+        }
     }
 };
 
@@ -370,6 +381,9 @@ pub const Storage = union(enum) {
             _ = scopes;
             @panic("todo");
         }
+        fn deinit(self: *@This()) void {
+            self.tokens.deinit();
+        }
     },
 
     pub fn set(self: *Self, scopes: ScopeSet, token: TokenInfo) !void {
@@ -384,6 +398,13 @@ pub const Storage = union(enum) {
             .memory => |*mem| mem.tokens.get(scopes),
             .disk => |*disk| disk.get(scopes),
         };
+    }
+
+    pub fn deinit(self: *Self) void {
+        switch (self.*) {
+            .memory => |*mem| mem.tokens.deinit(),
+            .disk => |*disk| disk.deinit(),
+        }
     }
 };
 
@@ -404,10 +425,15 @@ pub const ScopeFilter = struct {
 };
 
 pub const JsonToken = struct {
+    const Self = @This();
     scopes: []const Scope,
     token: TokenInfo,
     hash: ScopeHash,
     filter: ScopeFilter,
+
+    pub fn deinit(self: *const Self, allocator: Allocator) void {
+        self.token.deinit(allocator);
+    }
 };
 
 // TODO
@@ -482,10 +508,7 @@ pub const JsonTokens = struct {
     map: std.AutoHashMap(ScopeHash, JsonToken),
 
     fn init(allocator: Allocator) Self {
-        return Self{
-            .allocator = allocator,
-            .map = std.AutoHashMap(ScopeHash, JsonToken).init(allocator),
-        };
+        return Self{ .allocator = allocator, .map = std.AutoHashMap(ScopeHash, JsonToken).init(allocator) };
     }
 
     fn get(self: *const Self, scope_set: ScopeSet) ?TokenInfo {
@@ -537,14 +560,15 @@ pub const JsonTokens = struct {
     }
 
     fn deinit(self: *Self) void {
-        var iter = self.map.iterator();
+        var iter = self.map.valueIterator();
         while (iter.next()) |item| {
-            _ = item;
+            item.deinit(self.map.allocator);
         }
         self.map.deinit();
     }
 };
 
+/// Returns owned memory which must be freed by caller
 fn buildAuthUrl(allocator: Allocator, auth_uri: []const u8, client_id: []const u8, scopes: []const []const u8, redirect_uri: ?[]const u8) ![]const u8 {
     var url = std.ArrayList(u8).init(allocator);
     try url.appendSlice(auth_uri);
