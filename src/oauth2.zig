@@ -56,7 +56,7 @@ pub const InstalledFlowReturnMethod = enum { interactive, http_redirect };
 
 // TODO
 pub const InstalledFlowAuth = struct {
-    pub fn init(allocator: Allocator, client: *Client, secret: ApplicationSecret, method: InstalledFlowReturnMethod) Authenticator {
+    pub fn init(allocator: Allocator, client: *Client, secret: *ApplicationSecret, method: InstalledFlowReturnMethod) Authenticator {
         return Authenticator.init(InstalledFlow, InstalledFlow.init(undefined, allocator, secret, method), allocator, client);
     }
 };
@@ -65,12 +65,12 @@ pub const InstalledFlow = struct {
     const Self = @This();
     ptr: *anyopaque,
     allocator: Allocator,
-    secret: ApplicationSecret,
+    secret: *ApplicationSecret,
     method: InstalledFlowReturnMethod,
     redirect_uri: fn (*anyopaque) ?[]const u8,
     present_user_url: fn (*anyopaque, Allocator, []const u8, bool) anyerror![]const u8,
 
-    fn init(ptr: *anyopaque, allocator: Allocator, secret: ApplicationSecret, method: InstalledFlowReturnMethod) Self {
+    fn init(ptr: *anyopaque, allocator: Allocator, secret: *ApplicationSecret, method: InstalledFlowReturnMethod) Self {
         const Ptr = @TypeOf(ptr);
         const ptr_info = @typeInfo(Ptr);
 
@@ -132,8 +132,8 @@ pub const InstalledFlow = struct {
 
     fn token(self: *Self, client: *Client, scopes: []const Scope) !TokenInfo {
         return switch (self.method) {
-            .http_redirect => try self.askAuthCodeHttp(client, &self.secret, scopes),
-            .interactive => try self.askAuthCodeInteractively(client, &self.secret, scopes),
+            .http_redirect => try self.askAuthCodeHttp(client, self.secret, scopes),
+            .interactive => try self.askAuthCodeInteractively(client, self.secret, scopes),
         };
     }
     fn askAuthCodeHttp(self: *const Self, client: *Client, secret: *const ApplicationSecret, scopes: []const []const u8) !TokenInfo {
@@ -268,7 +268,7 @@ const TokenInfo = struct {
 
     // TODO
     fn isExpired(_: *const Self) bool {
-        return true;
+        return false;
     }
 
     fn toAccessToken(self: Self) AccessToken {
@@ -299,8 +299,7 @@ pub const Authenticator = struct {
     }
 
     pub fn token(self: *Self, scopes: []const []const u8) !AccessToken {
-        // TODO: force refresh until expiration is implemented
-        const info = try self.findTokenInfo(scopes, .yes);
+        const info = try self.findTokenInfo(scopes, .no);
         return info.toAccessToken();
     }
 
@@ -326,7 +325,7 @@ pub const Authenticator = struct {
             if (!t.isExpired() and force_refresh == .no) return t;
         }
         if (tok != null and tok.?.refresh_token != null and app_secret != null) {
-            const token_info = RefreshFlow.refreshToken(self.allocator, self.client, &app_secret.?, tok.?.refresh_token.?) catch
+            const token_info = RefreshFlow.refreshToken(self.allocator, self.client, app_secret.?, tok.?.refresh_token.?) catch
                 try self.auth_flow.token(self.client, scopes);
             try self.storage.set(hashed_scopes, token_info);
             return token_info;
@@ -349,7 +348,7 @@ const AuthFlow = union(enum) {
     const Self = @This();
     installed_flow: InstalledFlow,
 
-    fn appSecret(self: *Self) ?ApplicationSecret {
+    fn appSecret(self: *Self) ?*ApplicationSecret {
         return switch (self.*) {
             .installed_flow => |flow| flow.secret,
         };
@@ -456,14 +455,14 @@ const RefreshFlow = struct {
         defer url.deinit();
         try url.appendSlice(secret.token_uri);
         try url.append('&');
-        const body = .{
-            .{ "client_id", secret.client_id },
-            .{ "client_secret", secret.client_secret },
-            .{ "refresh_token", refresh_token },
-            .{ "grant_type", "refresh_token" },
+        const body = [_]Param{
+            .{ .a = "client_id", .b = secret.client_id },
+            .{ .a = "client_secret", .b = secret.client_secret },
+            .{ .a = "refresh_token", .b = refresh_token },
+            .{ .a = "grant_type", .b = "refresh_token" },
         };
-        inline for (body) |item|
-            try std.fmt.format(url.writer(), "{s}={s}", .{ item[0], item[1] });
+        for (body) |item|
+            try std.fmt.format(url.writer(), "{s}={s}", .{ item.a, item.b });
 
         var response = try client.post(url.items, headers);
         defer response.deinit();
