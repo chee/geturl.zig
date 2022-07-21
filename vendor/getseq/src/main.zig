@@ -11,15 +11,9 @@ fn vowel() u8 {
     return vowels[std.crypto.random.int(u8) % vowels.len];
 }
 
-fn word() std.fmt.BufPrintError![5]u8 {
+pub fn word() std.fmt.BufPrintError![5]u8 {
     var w: [5]u8 = undefined;
-    _ = try std.fmt.bufPrint(&w, "{c}{c}{c}{c}{c}", .{
-        consonant(),
-        vowel(),
-        consonant(),
-        vowel(),
-        consonant()
-    });
+    _ = try std.fmt.bufPrint(&w, "{c}{c}{c}{c}{c}", .{ consonant(), vowel(), consonant(), vowel(), consonant() });
     return w;
 }
 

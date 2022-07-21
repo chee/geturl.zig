@@ -1,7 +1,6 @@
-id: qoedvk82xtp01pt6w062hh2jshjx31dtd2ikxmb580ogjgzy
-name: libpcre
-main: src/main.zig
+id: dtkgi5mc97vnc5o7wq9f5q37estjel5sv66wllpafgcte7k8
+name: pcre2zig
+main: src/pcre2zig.zig
 license: MIT
-description: Zig bindings to libpcre
+description: A simple Zig API for the PCRE2 C library.
 dependencies:
-  - src: git https://github.com/nektro/pcre-8.45
