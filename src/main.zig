@@ -3,7 +3,6 @@ const path = std.fs.path;
 const requestz = @import("requestz");
 const getseq = @import("getseq");
 const mimetypes = @import("mimetypes");
-const pcre = @import("pcre");
 
 const GeturlError = error{NoFilename};
 
@@ -20,31 +19,35 @@ fn die(err: GeturlError) noreturn {
     std.process.exit(1);
 }
 
-// TODO utf-8
-fn slugify(string: []const u8) ![256]u8 {
-    const replaceables = try pcre.compile("[^a-zA-Z0-9.-]+", .{});
-    defer replaceables.deinit();
-    var buf: [256]u8 = undefined;
-    _ = try pcre.replace(replaceables, string, 0, "-", &buf, .{});
-    return buf;
+// TODO try shortening the buffer by shrinking multiple `-`
+fn slugify(string: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const view = std.unicode.Utf8View.init(string) catch unreachable;
+    var iter = view.iterator();
+    const memory = try allocator.alloc(u8, string.len + 1);
+    var len: usize = 0;
+    var prev: u8 = 0;
+    while (iter.nextCodepoint()) |c| {
+        const ch: u8 = @truncate(u8, c);
+        if (c <= 0xff and (std.ascii.isAlNum(ch) or ch == '.')) {
+            memory[len] = ch;
+            len += 1;
+        } else {
+            if (prev == '-') {
+                continue;
+            } else {
+                memory[len] = '-';
+                len += 1;
+            }
+        }
+    }
+    return memory[0..len];
 }
-
-test "slugify works with basic strings" {
-    try std.testing.expectEqual("hello there darling", slugify("hello there darling", "hello-there-darling"));
-}
-
-test "slugify works with unicode strings" {
-    try std.testing.expectEqual("hello there bebé", slugify("hello there bebé", "hello-there-beb-"));
-}
-
-test "slugify works with long strings" {
-    try std.testing.expectEqual("really long, really longreally long, really longreally long, really longreally long, really longreally long, really long", slugify("really long, really longreally long, really longreally long, really longreally long, really longreally long, really long", "really-long-really-longreally-long-really-longreally-long-really-longreally-long-really-longreally-long-really-long"));
-}
-
-test "slugify works with fancy strings" {}
 
 pub fn main() anyerror!void {
-    // const stdout = std.io.getStdOut().writer();
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alligator = arena.allocator();
+    const stdout = std.io.getStdOut().writer();
     var args = std.process.args();
     // throw myself away
     _ = args.next();
@@ -61,13 +64,14 @@ pub fn main() anyerror!void {
 
     // TODO if filename is /dev/fd/* or /tmp/.psub* guess extension using mimes
     const basename = path.basename(filename);
-    const extension = path.extension(basename);
 
-    // TODO extract slugify to lib
-    const output_filename = slugify(basename);
+    const output_filename = slugify(basename, alligator) catch unreachable;
+    const remote = std.fmt.allocPrint(alligator, "chee@snoot:/blog/files/{s}", .{output_filename}) catch unreachable;
+    const public = std.fmt.allocPrint(alligator, "https://chee.party/files/{s}", .{output_filename});
 
-    std.log.info("filename: {s}", .{filename});
-    std.log.info("basename: {s}", .{basename});
-    std.log.info("extension: {s}", .{extension});
-    std.log.info("output_filename: {s}", .{output_filename});
+    var rsync = std.ChildProcess.init(&.{ "rsync", "-zL", "--progress", "--chmod", "a+rw", filename, remote }, alligator);
+
+    _ = try rsync.spawnAndWait();
+
+    try stdout.print("{s}\n", .{public});
 }

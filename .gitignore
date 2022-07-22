@@ -1,2 +1,5 @@
 /zig-*
 /bin/
+.zigmod
+deps.zig
+zig-cache

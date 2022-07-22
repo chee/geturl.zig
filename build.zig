@@ -17,11 +17,6 @@ pub fn build(b: *std.build.Builder) void {
     exe.addPackagePath("requestz", "vendor/requestz/src/main.zig");
     exe.addPackagePath("mimetypes", "vendor/mimetypes/src/mimetypes.zig");
 
-    exe.addIncludePath("vendor/pcre/libs/pcre2-10.39/src");
-    exe.addLibraryPath("vendor/pcre/zig-out/lib");
-    exe.linkSystemLibraryName("pcre2zig");
-    exe.addPackagePath("pcre", "vendor/pcre/src/pcre2zig.zig");
-
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
