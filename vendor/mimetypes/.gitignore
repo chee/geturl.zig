@@ -1,8 +1,0 @@
-zig-cache/
-zig-out/
-.zigmod
-deps.zig
-
-.kdev4/
-*.kdev4
-*.kate-swp
