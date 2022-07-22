@@ -117,6 +117,7 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const alligator = arena.allocator();
     const stdout = std.io.getStdOut().writer();
+
     var args = std.process.args();
     // throw myself away
     _ = args.next();
@@ -133,14 +134,16 @@ pub fn main() anyerror!void {
     const output_filename = slugify(basename, alligator) catch unreachable;
     const dir = getseq.word();
     const destdir = std.fmt.allocPrint(alligator, "/blog/files/{s}", .{dir}) catch unreachable;
-    var ssh = std.ChildProcess.init(&.{ "ssh", "snoot", "mkdir", "-p", destdir }, alligator);
-    _ = try ssh.spawnAndWait();
+    var mkdir = std.ChildProcess.init(&.{ "ssh", "snoot", "mkdir", "-p", destdir }, alligator);
+    mkdir.stderr_behavior = std.ChildProcess.StdIo.Ignore;
+    mkdir.stdout_behavior = std.ChildProcess.StdIo.Ignore;
+    _ = try mkdir.spawnAndWait();
 
     const remote = std.fmt.allocPrint(alligator, "chee@snoot:{s}/{s}", .{ destdir, output_filename }) catch unreachable;
     const public = std.fmt.allocPrint(alligator, "https://chee.party/files/{s}/{s}", .{ dir, output_filename }) catch unreachable;
 
     var rsync = std.ChildProcess.init(&.{ "rsync", "-zL", "--progress", "--chmod", "a+rw", filename, remote }, alligator);
-
+    rsync.stderr_behavior = std.ChildProcess.StdIo.Ignore;
     _ = try rsync.spawnAndWait();
 
     try stdout.print("{s}\n", .{public});
