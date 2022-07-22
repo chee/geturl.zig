@@ -1,8 +1,7 @@
 const std = @import("std");
 const path = std.fs.path;
-const requestz = @import("requestz");
 const getseq = @import("getseq");
-const mimetypes = @import("mimetypes");
+//const mimetypes = @import("mimetypes");
 
 const GeturlError = error{NoFilename};
 
@@ -49,9 +48,9 @@ pub fn main() anyerror!void {
     // throw myself away
     _ = args.next();
 
-    var mimes = mimetypes.Registry.init(std.heap.page_allocator);
-    defer mimes.deinit();
-    try mimes.load();
+    // var mimes = mimetypes.Registry.init(std.heap.page_allocator);
+    // defer mimes.deinit();
+    // try mimes.load();
 
     // TODO accept this case if we are being piped into
     const filename = args.next() orelse {
