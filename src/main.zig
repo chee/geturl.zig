@@ -48,8 +48,7 @@ pub fn main() anyerror!void {
     // throw myself away
     _ = args.next();
 
-    // var mimes = mimetypes.Registry.init(std.heap.page_allocator);
-    // defer mimes.deinit();
+    // var mimes = mimetypes.Registry.init(alligator);
     // try mimes.load();
 
     // TODO accept this case if we are being piped into

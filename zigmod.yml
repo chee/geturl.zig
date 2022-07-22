@@ -3,3 +3,7 @@ name: geturl
 license: GPL-3.0
 description: :)
 root_dependencies:
+  - src: git https://github.com/chee/getseq.zig
+    name: getseq
+  - src: git https://github.com/frmdstryr/zig-mimetypes
+    name: mimetypes
