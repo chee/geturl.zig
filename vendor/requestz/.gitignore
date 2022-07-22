@@ -1,8 +1,0 @@
-# Build artifacts
-zig-cache/
-
-# Gyro
-deps.zig
-.gyro
-gyro.lock
-zig-out/
