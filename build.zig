@@ -14,7 +14,6 @@ pub fn build(b: *std.build.Builder) void {
     const exe = b.addExecutable("geturl", "src/main.zig");
 
     exe.addPackagePath("getseq", "vendor/getseq/src/main.zig");
-    exe.addPackagePath("requestz", "vendor/requestz/src/main.zig");
     exe.addPackagePath("mimetypes", "vendor/mimetypes/src/mimetypes.zig");
 
     exe.setTarget(target);
