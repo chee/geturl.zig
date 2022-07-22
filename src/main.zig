@@ -18,21 +18,18 @@ fn die(err: GeturlError) noreturn {
     _ = stderr.write("\n") catch {};
     std.process.exit(1);
 }
-
-// TODO try shortening the buffer by shrinking multiple `-`
 fn slugify(string: []const u8, allocator: std.mem.Allocator) ![]u8 {
     const view = std.unicode.Utf8View.init(string) catch unreachable;
     var iter = view.iterator();
     const memory = try allocator.alloc(u8, string.len + 1);
     var len: usize = 0;
-    var prev: u8 = 0;
     while (iter.nextCodepoint()) |c| {
         const ch: u8 = @truncate(u8, c);
         if (c <= 0xff and (std.ascii.isAlNum(ch) or ch == '.')) {
             memory[len] = ch;
             len += 1;
         } else {
-            if (prev == '-') {
+            if (len > 0 and memory[len - 1] == '-') {
                 continue;
             } else {
                 memory[len] = '-';
@@ -66,8 +63,13 @@ pub fn main() anyerror!void {
     const basename = path.basename(filename);
 
     const output_filename = slugify(basename, alligator) catch unreachable;
-    const remote = std.fmt.allocPrint(alligator, "chee@snoot:/blog/files/{s}", .{output_filename}) catch unreachable;
-    const public = std.fmt.allocPrint(alligator, "https://chee.party/files/{s}", .{output_filename});
+    const dir = getseq.word();
+    const destdir = std.fmt.allocPrint(alligator, "/blog/files/{s}", .{dir}) catch unreachable;
+    var ssh = std.ChildProcess.init(&.{ "ssh", "snoot", "mkdir", "-p", destdir }, alligator);
+    _ = try ssh.spawnAndWait();
+
+    const remote = std.fmt.allocPrint(alligator, "chee@snoot:{s}/{s}", .{ destdir, output_filename }) catch unreachable;
+    const public = std.fmt.allocPrint(alligator, "https://chee.party/files/{s}/{s}", .{ dir, output_filename }) catch unreachable;
 
     var rsync = std.ChildProcess.init(&.{ "rsync", "-zL", "--progress", "--chmod", "a+rw", filename, remote }, alligator);
 
